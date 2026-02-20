@@ -17,6 +17,14 @@ limit order book stores buy and sell orders
 - `qty` - quantity
 - `timestamp` - implicit arrival ordering (FIFO within price level since I'm using a queue but I'll keep the timestamp for logging) 
 
+<details>
+<summary> why no ticker symbol? </summary>
+
+I'm building one order book per symbol which references real world exchanges
+
+If I do optimise it, ticker would be at the routing layer and not inside each order 
+</details>
+
 ## matching priority 
 orders are matched by price-time priority
 1. Price priority
