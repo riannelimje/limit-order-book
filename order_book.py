@@ -30,36 +30,31 @@ class LimitOrderBook:
         return self.asks, self.ask_prices, False
     
     def add_order(self, order):
-        book, price_list, is_bid = self._get_books(order.side)
-
-        # create price level if new
-        if order.price not in book:
-            book[order.price] = deque()
-
-            if is_bid: 
-                # insert negative price for bids to maintain descending order
-                # insort keeps list ascending
-                insort(price_list, -order.price) 
-            else:
-                insort(price_list, order.price)
-        
-        book[order.price].append(order)
-        self.order_map[order.order_id] = order # links order id to the order obj for easy access 
-        
-        # see if we can execute any orders immediately
+         # see if we can execute any orders immediately
         if order.side == Side.BUY:
             self._match_buy(order)
-
-            # rest on book if still remaining
-            if order.qty > 0:
-                print(f"Order {order.order_id} added to book with remaining qty {order.qty}")
-
-        # implement sell side matching logic 
-        elif order.side == Side.SELL:
+        else: 
             self._match_sell(order)
-            if order.qty > 0:
-                print(f"Order {order.order_id} added to book with remaining qty {order.qty}")
 
+        # rest on book if still remaining
+        if order.qty > 0:
+            book, price_list, is_bid = self._get_books(order.side)
+
+            # create price level if new
+            if order.price not in book:
+                book[order.price] = deque()
+
+                if is_bid: 
+                    # insert negative price for bids to maintain descending order
+                    # insort keeps list ascending
+                    insort(price_list, -order.price) 
+                else:
+                    insort(price_list, order.price)
+            
+            book[order.price].append(order)
+            self.order_map[order.order_id] = order # links order id to the order obj for easy access 
+
+            print(f"Order {order.order_id} added to book with remaining qty {order.qty}")
 
     def _match_buy(self, incoming_order):
         # got to check incoming order still has quantity and still have asks avail
