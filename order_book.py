@@ -1,5 +1,6 @@
 from collections import deque
 from bisect import insort # to efficiently insert price while maintaining sorted order 
+from order import Order, Side
 
 class LimitOrderBook: 
     def __init__(self):
@@ -45,3 +46,41 @@ class LimitOrderBook:
         book[order.price].append(order)
         self.order_map[order.order_id] = order # links order id to the order obj for easy access 
         
+        # see if we can execute any orders immediately
+        if order.side == Side.BUY:
+            self._match_buy(order)
+
+            # rest on book if still remaining
+            if order.qty > 0:
+                print(f"Order {order.order_id} added to book with remaining qty {order.qty}")
+
+        # TODO: implement sell side matching logic 
+
+
+    def _match_buy(self, incoming_order):
+        # got to check incoming order still has quantity and still have asks avail
+        while incoming_order.qty > 0 and self.ask_prices: 
+            best_ask_price = self.get_best_ask()
+
+            if incoming_order.price < best_ask_price:
+                break # can't match if incoming buy price is less than best ask
+            
+            ask_queue = self.asks[best_ask_price]
+            best_ask_order = ask_queue[0]
+            trade_qty = min(incoming_order.qty, best_ask_order.qty) # to determine the trade size
+
+            # execute trade
+            incoming_order.qty -= trade_qty
+            best_ask_order.qty -= trade_qty
+
+            print(f"Trade executed: {trade_qty} @ {best_ask_price} between {incoming_order.order_id} and {best_ask_order.order_id}")
+
+            # remove filled resting order 
+            if best_ask_order.qty == 0: 
+                ask_queue.popleft() # remove the order from the queue
+                del self.order_map[best_ask_order.order_id] # remove from order map
+
+            # remove empty price level
+            if not ask_queue:
+                del self.asks[best_ask_price]
+                self.ask_prices.pop(0) # remove best ask price level
