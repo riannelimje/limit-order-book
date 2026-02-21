@@ -33,6 +33,14 @@ orders are matched by price-time priority
 2. Time priority
   - earlier orders at same price filled first (using FIFO)
 
+<details>
+<summary> matching rules </summary>
+
+- buy price >= best ask (lowest ask)
+- sell price <= besk bid (highest bid)
+- within price level (`popleft()` - following FIFO)
+</details>
+
 ## dsa 
 
 order book maintains: 
@@ -66,6 +74,36 @@ probs max heap for bid and min heap for ask
 
 - O(logn) for insert and pop best price as opposed to sorted list O(n)
 - the reason why i did not use heap for a start is the deletion on node is not efficient - O(n) to do a full scan 
+</details>
+
+<details>
+<summary>sorted price insertion strategy </summary>
+
+to maintain sorted price levels efficiently, I use binary search insertion via `bisect.insort`
+- ask prices - maintained in ascending order
+- bid prices - maintained in descending order 
+
+python's bisect only supports ascending order so i store the price using a descending trick 
+- ask --> `insort(price_list, order.price)`
+- bid --> insert negative price into ascending list `insort(price_list, -order.price)`
+
+this keeps lookup best price at O(1), insertion at O(n) due to shifting and search position at O(logn)
+
+**example:**
+```
+ask_prices = [101, 102, 103]   # ascending, best ask = ask_prices[0]
+bid_prices = [-101, -99] # stored negative, best bid = -bid_prices[0]
+
+# to get real best bid:
+best_bid = -bid_prices[0]  # 101
+```
+
+so inserting a new bid at $100:
+```
+before: [-101, -99]
+insert: -100
+after:  [-101, -100, -99]  # correct descending order preserved
+```
 </details>
 
 ### deque
