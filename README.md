@@ -41,6 +41,29 @@ orders are matched by price-time priority
 - within price level (`popleft()` - following FIFO)
 </details>
 
+<details>
+<summary> aggressor vs resting order semantics </summary>
+incoming orders are always matched before being admitted to the book - ensures correct aggressor/passive behaviour similar to real exchanges 
+
+resting order - order that is already sitting in the book waiting to be matched
+
+execution rule: 
+- trade occurs at the resting order's price 
+- incoming order == aggressor 
+- order on the book == resting order / passive
+</details>
+
+<details>
+<summary> matching engine flow </summary>
+when a new order arrives: 
+
+1. match against opposite book 
+2. execute trades using price time priority 
+3. reduce qty on both sides 
+4. remove fully fille resting orders
+5. if incoming still has qty --> rest on book 
+</details>
+
 ## dsa 
 
 order book maintains: 
@@ -117,3 +140,23 @@ after:  [-101, -100, -99]  # correct descending order preserved
 - fast lookup by ID avg O(1)
 - without it cancel would be O(n)
 - space for time tradeoff
+
+## complexity summary
+
+| operation | time | why |
+|---|---|---|
+| add order | O(n) | bisect finds position O(log n) but list shifts O(n) |
+| match order | O(k) | k = number of price levels consumed |
+| cancel order | O(n) | order_map O(1) lookup, list removal O(n) |
+| best bid/ask | O(1) | first element of sorted list |
+| v2 target | O(log n) | SortedDict replaces sorted list |
+
+## optimisation roadmap
+
+| version | price structure | insert | delete | best price |
+|---|---|---|---|---|
+| v1 (now) | sorted list + bisect | O(n) | O(n) | O(1) |
+| v2 | SortedDict | O(log n) | O(log n) | O(1) |
+| v3 | BTreeMap (Rust/C++) | O(log n) | O(log n) | O(1) + cache efficient |
+
+heap was considered but rejected - arbitrary deletion is O(n) which breaks cancellation performance. lazy deletion workaround exists but silently degrades best price lookup under heavy cancellations.
