@@ -54,7 +54,11 @@ class LimitOrderBook:
             if order.qty > 0:
                 print(f"Order {order.order_id} added to book with remaining qty {order.qty}")
 
-        # TODO: implement sell side matching logic 
+        # implement sell side matching logic 
+        elif order.side == Side.SELL:
+            self._match_sell(order)
+            if order.qty > 0:
+                print(f"Order {order.order_id} added to book with remaining qty {order.qty}")
 
 
     def _match_buy(self, incoming_order):
@@ -84,3 +88,25 @@ class LimitOrderBook:
             if not ask_queue:
                 del self.asks[best_ask_price]
                 self.ask_prices.pop(0) # remove best ask price level
+
+    def _match_sell(self, incoming_order): 
+        while incoming_order.qty > 0 and self.bid_prices: 
+            best_bid_price = self.get_best_bid()
+
+            if incoming_order.price > best_bid_price: 
+                break 
+
+            bid_queue = self.bids[best_bid_price]
+            best_bid_order = bid_queue[0]
+            trade_qty = min(incoming_order.qty, best_bid_order.qty)
+            incoming_order.qty -= trade_qty
+            best_bid_order.qty -= trade_qty
+            print(f"Trade executed: {trade_qty} @ {best_bid_price} between {incoming_order.order_id} and {best_bid_order.order_id}")
+
+            if best_bid_order.qty == 0:
+                bid_queue.popleft()
+                del self.order_map[best_bid_order.order_id]
+
+            if not bid_queue:
+                del self.bids[best_bid_price]
+                self.bid_prices.pop(0)
