@@ -159,4 +159,68 @@ after:  [-101, -100, -99]  # correct descending order preserved
 | v2 | SortedDict | O(log n) | O(log n) | O(1) |
 | v3 | BTreeMap (Rust/C++) | O(log n) | O(log n) | O(1) + cache efficient |
 
-heap was considered but rejected - arbitrary deletion is O(n) which breaks cancellation performance. lazy deletion workaround exists but silently degrades best price lookup under heavy cancellations.
+heap was considered but rejected - arbitrary deletion is O(n) which breaks cancellation performance
+
+lazy deletion workaround exists but silently degrades best price lookup under heavy cancellations
+
+<details>
+<summary>further explaination - why not heap + lazy deletion?</summary>
+again, removing a cancelled order with heaps requires O(n) scan 
+
+lazy deletion
+- don't actually remove the cancelled order from the heap
+- just marks it as cancelled
+- when popping from the heap, it skips marked entries 
+
+**main problem** 
+
+a busy market with lots of cancellations slowly fills the heap with stale garbage
+- this means O(1) best price lookup silently degrades as every lookup has to skip through dead entries before finding a live one!
+
+example: 
+```
+heap = [cancelled, cancelled, cancelled, 101, 102]
+# we have to dig through the trash to reach 101
+```
+
+this is why heap was rejected - it trades one problem (slow deletion) for another (dishonest lookup)
+best price lookup is technically O(1) in the best case but **degrades proportionally** to cancellation volume 
+```
+mechanics - pop, check, if cancelled, pop again else it's the best one!
+clean heap - O(1) --> pop
+1 stale entry - O(1) --> skip 1 time 
+10 stale - O(10) --> skip 10 times
+1000 stale - O(1000) --> basically you pop until you get the correct one 
+```
+sorted list is slower on insert but at least its complexity is predictable
+
+lazy deletions good when 
+- deletions are infrequent relative to reads
+- only ever need the single best element 
+- have a natural cleanup moment 
+
+and i don't think the order book passes any of these(?) 
+- cancellations are frequent
+- we need arbitrary price level access to reach to any level and not just the top element 
+- unless we implement one ourselves 
+  - mostly got to heapify which is O(n)
+  - when to trigger it is an issue - has to be not too frequent and not too infrequent 
+  - cleanup would cost time and real exchange don't wait 
+
+general principle 
+> a workaround that requires you to build more infra to manage the workaround is a sign that you chose the wrong data structure for the problem
+</details>
+
+## testing
+
+the engine is validated with pytest covering:
+
+- non-crossing orders
+- full fills
+- partial fills
+- multi-level sweeps
+- FIFO within price level
+- order_map consistency
+- empty book edge cases
+
+tests were written before optimisation to ensure refactors preserve correctness.
