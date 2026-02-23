@@ -105,3 +105,33 @@ class LimitOrderBook:
             if not bid_queue:
                 del self.bids[best_bid_price]
                 self.bid_prices.pop(0)
+
+    def cancel_order(self, order_id) -> bool:
+        #  lookup in ordermap 
+        order = self.order_map.get(order_id)
+        if not order:
+            return False 
+        
+        book, price_list, is_bid = self._get_books(order.side)
+        queue = book.get(order.price)
+
+        # remove from deque - O(k), where k is number of orders at that price level, but we expect small k in practice
+        try: 
+            queue.remove(order)
+        except ValueError:
+            return False # order not found in queue, should not happen if order_map is correct
+        
+        #  clean up empty price level 
+        if not queue: 
+            del book[order.price]
+            if is_bid: 
+                price_list.remove(-order.price)
+            else: 
+                price_list.remove(order.price)
+
+        # remove from order map
+        del self.order_map[order_id]
+        
+        print(f"Order {order_id} cancelled successfully")
+        return True
+    
