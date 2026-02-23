@@ -241,6 +241,26 @@ after:  [-101, -100, -99]  # correct descending order preserved
 - without it cancel would be O(n)
 - space for time tradeoff
 
+### doubly linked list 
+- replaces deque for each price level to improve cancellation performance 
+  - see performance benchmark 
+- maintains FIFO for price time priority 
+  - append new order to tail - O(1)
+  - remove filled order from head - O(1)
+  - cancel any order in the middle - O(1)
+    - direct pointer via order_map
+- fast cancellation under deep queues
+
+```
+Price 100 DLL: head -> [O1] <-> [O2] <-> [O3] <- tail
+Order_map: { "O1": node1, "O2": node2, "O3": node3 }
+
+Cancel O2:
+  node2.prev.next = node2.next
+  node2.next.prev = node2.prev
+Result: head -> [O1] <-> [O3] <- tail
+```
+
 ## complexity summary
 
 | operation | time | why |
@@ -265,10 +285,10 @@ the engine is validated with pytest covering:
 
 tests were written before optimisation to ensure refactors preserve correctness.
 
-## performance benchmarks (v1)
+## performance benchmarks 
 benchmarks were run on python 3.13
 
-**table** - see `benchmark_results_v1.csv` for more
+**table (v1)** - see `benchmark_results.csv` for more
 
 | Operation | Orders | Time (s) | Throughput (ops/sec) |
 |------------|---------|-----------|------------------------|
