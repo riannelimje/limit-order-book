@@ -189,11 +189,15 @@ after:  [-101, -100, -99]  # correct descending order preserved
 
 ## optimisation roadmap
 
-| version | price structure | insert | delete | best price |
-|---|---|---|---|---|
-| v1 (now) | sorted list + bisect | O(n) | O(n) | O(1) |
-| v2 | SortedDict | O(log n) | O(log n) | O(1) |
-| v3 | BTreeMap (Rust/C++) | O(log n) | O(log n) | O(1) + cache efficient |
+
+| version  | price structure         | queue structure | insert   | cancel | best price             | notes                                                                                    |
+| -------- | ----------------------- | --------------- | -------- | ------ | ---------------------- | ---------------------------------------------------------------------------------------- |
+| v1 (now) | sorted list + bisect    | deque           | O(n)     | O(k)   | O(1)                   | naive queues, cancel scans deep queues linearly (k = depth at price level)               |
+| v2       | sorted list + bisect    | DLL             | O(n)     | O(1)   | O(1)                   | replace deque with doubly-linked list → cancellation becomes O(1) while maintaining FIFO |
+| v3       | SortedDict              | DLL             | O(log n) | O(1)   | O(1)                   | handle very large price universes → insertion no longer O(n) due to shifting             |
+| v4       | BTreeMap / Rust/C++ map | DLL             | O(log n) | O(1)   | O(1) + cache efficient | high-performance, low-level memory optimisations                                         |
+
+>initially thought deque was fine but the performance benchmarks caught the degredation so that pain point is managed first!
 
 heap was considered but rejected - arbitrary deletion is O(n) which breaks cancellation performance
 
@@ -260,3 +264,30 @@ the engine is validated with pytest covering:
 - empty book edge cases
 
 tests were written before optimisation to ensure refactors preserve correctness.
+
+## performance benchmarks (v1)
+benchmarks were run on python 3.13
+
+**table** - see `benchmark_results_v1.csv` for more
+
+| Operation | Orders | Time (s) | Throughput (ops/sec) |
+|------------|---------|-----------|------------------------|
+| Inserts (passive) | 100,000 | 0.4787 | 208,905 |
+| Cancel (deep queue) | 50,000 | 4.9983 | 10,003 |
+| Matching (aggressive) | 50,000 | 0.2860 | 174,800 |
+
+### observations
+- cancellation throughput drops significantly under deep price levels
+  - expected outcome since `deque.remove` requires linear traversal within price level
+  - doubly linked list would help to achieve O(1) cancellation by storing a direct node pointer 
+
+### roadmap 
+i think i'll implement a dll first followed by SortedDict
+
+<details>
+<summary>why not SortedDict first?</summary>
+although sorted lists have O(n) insertion due to shifting theoretically, current benchmarks shows insertion throughput to be relatively high 
+
+the primary bottleneck now is the cancellation under deep price levels so i'll work on optimising that first!
+</details>
+
