@@ -64,6 +64,40 @@ when a new order arrives:
 5. if incoming still has qty --> rest on book 
 </details>
 
+<details>
+<summary> cancel rules </summary>
+given an order id: 
+
+1. find the order fast - via `order_map` --> O(1) avg 
+2. locate its correct price level queue
+3. remove it from deque - O(k), k is orders at that price 
+4. clean up empty price levels - O(1)
+5. remove from order_map
+
+why O(k)? 
+- although price lookup is constant time, removing from the middle of deque requires a linear scan to locate the order within that price level 
+
+this implementation (v1) demonstrates the baseline behaviour
+
+<details>
+<summary> pros and cons of current implementation </summary>
+
+**pros**
+- simple implementation
+- memory efficient
+
+**cons**
+- cancel cost grows with queue depth 
+- not optimal for very deep prices 
+- potential hotspot under heavy cancel flow
+
+</details>
+
+future optimisations 
+- doubly linked list per price level
+- direct node pointers stored in order map 
+</details>
+
 ## dsa 
 
 order book maintains: 
@@ -134,6 +168,8 @@ after:  [-101, -100, -99]  # correct descending order preserved
   - append new order to the back --> O(1)
   - remove filled orders from front --> O(1)
   - if list was used --> O(n) from pop(0) since it still got to shift all elements to the left 
+  - cancel order --> O(k), k = depth of queue
+    - it will be slow with a large queue - probs use DLL 
 
 ### secondary index 
 `self.order_map: order_id → Order` - points order id to the order 
