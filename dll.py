@@ -6,7 +6,6 @@ class DLLNode:
         self.next = None
         self.parent = None  # reference to parent DLL (price level)
 
-
 class DoublyLinkedList:
     """FIFO queue implemented with a DLL."""
     def __init__(self, price):
@@ -57,9 +56,36 @@ class DoublyLinkedList:
         node.prev = node.next = None
         self.size -= 1
 
+    @property
+    def _size(self):
+        """Backward-compatible alias; some callers expect `_size`."""
+        return self.size
+
     def is_empty(self):
         return self.size == 0
+    
+    def __len__(self):
+        return self._size
 
+    def __getitem__(self, index):
+        """Allow list-style access (0-based) to orders in the queue."""
+        if not isinstance(index, int) or index < 0:
+            raise IndexError("index must be a non-negative integer")
+
+        current = self.head
+        i = 0
+        while current and i < index:
+            current = current.next
+            i += 1
+
+        if current is None:
+            raise IndexError("index out of range")
+
+        return current.order
+    
+    def first(self):
+        return self.head.order if self.head else None
+    
     def __iter__(self):
         """Iterate over orders in FIFO order."""
         current = self.head

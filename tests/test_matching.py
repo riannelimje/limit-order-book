@@ -105,7 +105,7 @@ def test_fifo_within_price_level(lob):
     assert lob.get_best_ask() == 100.0
 
     # verify S2 is still there with correct remaining qty
-    remaining = lob.asks[100.0][0]
+    remaining = lob.asks[100.0].first()  # peek at first order in queue at 100
     assert remaining.order_id == "S2"
     assert remaining.qty == 4
 
