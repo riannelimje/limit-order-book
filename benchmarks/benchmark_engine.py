@@ -6,7 +6,7 @@ from order import Order, Side
 from datetime import datetime, timezone
 from pathlib import Path
 
-RESULTS_FILE = Path("benchmark_results_v1.csv")
+RESULTS_FILE = Path("benchmark_results.csv")
 
 def save_result(benchmark_type, n, elapsed):
     ops = n / elapsed
@@ -33,7 +33,7 @@ def save_result(benchmark_type, n, elapsed):
             n,
             f"{elapsed:.6f}",
             f"{ops:.2f}",
-            "v1",
+            "v2",
         ])
 
 def benchmark_inserts(n=100_000):
