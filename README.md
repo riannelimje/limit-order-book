@@ -9,6 +9,70 @@ so i'm gonna build a simple limit order book from scratch to demonstrate core ma
 - start with naive implementation
 - iteratively optimise the data structures
 
+## optimisation roadmap
+
+
+| version  | price structure         | queue structure | insert   | cancel | best price             | notes                                                                                    |
+| -------- | ----------------------- | --------------- | -------- | ------ | ---------------------- | ---------------------------------------------------------------------------------------- |
+| v1       | sorted list + bisect    | deque           | O(n)     | O(k)   | O(1)                   | naive queues, cancel scans deep queues linearly (k = depth at price level)               |
+| v2 (now) | sorted list + bisect    | DLL             | O(n)     | O(1)   | O(1)                   | replace deque with doubly-linked list → cancellation becomes O(1) while maintaining FIFO |
+| v3       | SortedDict              | DLL             | O(log n) | O(1)   | O(1)                   | handle very large price universes → insertion no longer O(n) due to shifting             |
+| v4       | BTreeMap / Rust/C++ map | DLL             | O(log n) | O(1)   | O(1) + cache efficient | high-performance, low-level memory optimisations                                         |
+
+>initially thought deque was fine but the performance benchmarks caught the degredation so that pain point is managed first!
+
+heap was considered but rejected - arbitrary deletion is O(n) which breaks cancellation performance
+
+lazy deletion workaround exists but silently degrades best price lookup under heavy cancellations
+
+<details>
+<summary>further explaination - why not heap + lazy deletion?</summary>
+again, removing a cancelled order with heaps requires O(n) scan 
+
+lazy deletion
+- don't actually remove the cancelled order from the heap
+- just marks it as cancelled
+- when popping from the heap, it skips marked entries 
+
+**main problem** 
+
+a busy market with lots of cancellations slowly fills the heap with stale garbage
+- this means O(1) best price lookup silently degrades as every lookup has to skip through dead entries before finding a live one!
+
+example: 
+```
+heap = [cancelled, cancelled, cancelled, 101, 102]
+# we have to dig through the trash to reach 101
+```
+
+this is why heap was rejected - it trades one problem (slow deletion) for another (dishonest lookup)
+best price lookup is technically O(1) in the best case but **degrades proportionally** to cancellation volume 
+```
+mechanics - pop, check, if cancelled, pop again else it's the best one!
+clean heap - O(1) --> pop
+1 stale entry - O(1) --> skip 1 time 
+10 stale - O(10) --> skip 10 times
+1000 stale - O(1000) --> basically you pop until you get the correct one 
+```
+sorted list is slower on insert but at least its complexity is predictable
+
+lazy deletions good when 
+- deletions are infrequent relative to reads
+- only ever need the single best element 
+- have a natural cleanup moment 
+
+and i don't think the order book passes any of these(?) 
+- cancellations are frequent
+- we need arbitrary price level access to reach to any level and not just the top element 
+- unless we implement one ourselves 
+  - mostly got to heapify which is O(n)
+  - when to trigger it is an issue - has to be not too frequent and not too infrequent 
+  - cleanup would cost time and real exchange don't wait 
+
+general principle 
+> a workaround that requires you to build more infra to manage the workaround is a sign that you chose the wrong data structure for the problem
+</details>
+
 ## order structure
 limit order book stores buy and sell orders 
 - `order_id` - unique identifier
@@ -187,70 +251,6 @@ after:  [-101, -100, -99]  # correct descending order preserved
 | best bid/ask | O(1) | first element of sorted list |
 | v2 target | O(log n) | SortedDict replaces sorted list |
 
-## optimisation roadmap
-
-
-| version  | price structure         | queue structure | insert   | cancel | best price             | notes                                                                                    |
-| -------- | ----------------------- | --------------- | -------- | ------ | ---------------------- | ---------------------------------------------------------------------------------------- |
-| v1 (now) | sorted list + bisect    | deque           | O(n)     | O(k)   | O(1)                   | naive queues, cancel scans deep queues linearly (k = depth at price level)               |
-| v2       | sorted list + bisect    | DLL             | O(n)     | O(1)   | O(1)                   | replace deque with doubly-linked list → cancellation becomes O(1) while maintaining FIFO |
-| v3       | SortedDict              | DLL             | O(log n) | O(1)   | O(1)                   | handle very large price universes → insertion no longer O(n) due to shifting             |
-| v4       | BTreeMap / Rust/C++ map | DLL             | O(log n) | O(1)   | O(1) + cache efficient | high-performance, low-level memory optimisations                                         |
-
->initially thought deque was fine but the performance benchmarks caught the degredation so that pain point is managed first!
-
-heap was considered but rejected - arbitrary deletion is O(n) which breaks cancellation performance
-
-lazy deletion workaround exists but silently degrades best price lookup under heavy cancellations
-
-<details>
-<summary>further explaination - why not heap + lazy deletion?</summary>
-again, removing a cancelled order with heaps requires O(n) scan 
-
-lazy deletion
-- don't actually remove the cancelled order from the heap
-- just marks it as cancelled
-- when popping from the heap, it skips marked entries 
-
-**main problem** 
-
-a busy market with lots of cancellations slowly fills the heap with stale garbage
-- this means O(1) best price lookup silently degrades as every lookup has to skip through dead entries before finding a live one!
-
-example: 
-```
-heap = [cancelled, cancelled, cancelled, 101, 102]
-# we have to dig through the trash to reach 101
-```
-
-this is why heap was rejected - it trades one problem (slow deletion) for another (dishonest lookup)
-best price lookup is technically O(1) in the best case but **degrades proportionally** to cancellation volume 
-```
-mechanics - pop, check, if cancelled, pop again else it's the best one!
-clean heap - O(1) --> pop
-1 stale entry - O(1) --> skip 1 time 
-10 stale - O(10) --> skip 10 times
-1000 stale - O(1000) --> basically you pop until you get the correct one 
-```
-sorted list is slower on insert but at least its complexity is predictable
-
-lazy deletions good when 
-- deletions are infrequent relative to reads
-- only ever need the single best element 
-- have a natural cleanup moment 
-
-and i don't think the order book passes any of these(?) 
-- cancellations are frequent
-- we need arbitrary price level access to reach to any level and not just the top element 
-- unless we implement one ourselves 
-  - mostly got to heapify which is O(n)
-  - when to trigger it is an issue - has to be not too frequent and not too infrequent 
-  - cleanup would cost time and real exchange don't wait 
-
-general principle 
-> a workaround that requires you to build more infra to manage the workaround is a sign that you chose the wrong data structure for the problem
-</details>
-
 ## testing
 
 the engine is validated with pytest covering:
@@ -291,3 +291,25 @@ although sorted lists have O(n) insertion due to shifting theoretically, current
 the primary bottleneck now is the cancellation under deep price levels so i'll work on optimising that first!
 </details>
 
+<details>
+<summary>v2 plan</summary>
+
+- replace deque with dll at each price level --> O(1) append and removal
+- update order to store a reference to its node 
+- update add order and match methods 
+- keep sorted price list for now with the bisect.insory - stil O(1)
+- update cancel logic
+</details>
+
+### Benchmarks — DLL Optimisation (v2)
+
+| Operation | v1 (ops/sec) | v2 (ops/sec) | Comment |
+|-----------|--------------|--------------|---------|
+| Inserts 100k | 208,905 | 68,730 | DLL insertion slightly slower due to node allocations. |
+| Cancel 50k | 10,003 | 2,541,812 | Massive speedup! O(1) removal using order_map + DLL nodes. |
+| Matching 50k | 174,799 | 72,668 | Slightly slower, but FIFO preserved. |
+
+**Takeaways:**
+1. Cancellations were the main bottleneck — solved by DLL + node references.
+2. Inserts and matching remain acceptable; minor overhead from DLL.
+3. Next step: replace sorted price lists with `SortedDict` for O(log n) price-level maintenance.
