@@ -1,28 +1,34 @@
-from sortedcontainers import SortedDict
+from collections import deque
+from bisect import insort # to efficiently insert price while maintaining sorted order 
 from order import Order, Side
 from dll import DoublyLinkedList
 
 class LimitOrderBook: 
     def __init__(self):
-        self.bids: SortedDict[float, DoublyLinkedList] = SortedDict()
-        self.asks: SortedDict[float, DoublyLinkedList] = SortedDict()
+        self.bids = {}
+        self.asks = {}
 
-        # these are no longer needed since SortedDict maintains sorted keys
-        # # sorted price levels for quick access
-        # self.bid_prices = [] # descending - cuz we want highest bids
-        # self.ask_prices = [] # ascending - lowest asks first 
+        # sorted price levels for quick access
+        self.bid_prices = [] # descending - cuz we want highest bids
+        self.ask_prices = [] # ascending - lowest asks first 
 
         self.order_map = {}
 
     def get_best_bid(self):
-        if not self.bids:
+        if not self.bid_prices:
             return None
-        return self.bids.peekitem(-1)[0]  # get the last key (highest bid)
+        return -self.bid_prices[0]
     
     def get_best_ask(self):
-        if not self.asks:
+        if not self.ask_prices:
             return None
-        return self.asks.peekitem(0)[0]  # get the first key (lowest ask)
+        return self.ask_prices[0]
+    
+    def _get_books(self, side):
+        # structure - (book, price_list, is_bid)
+        if side.name == 'BUY':
+            return self.bids, self.bid_prices, True
+        return self.asks, self.ask_prices, False
     
     def add_order(self, order):
          # see if we can execute any orders immediately
@@ -33,11 +39,18 @@ class LimitOrderBook:
 
         # rest on book if still remaining
         if order.qty > 0:
-            book = self.bids if order.side == Side.BUY else self.asks
+            book, price_list, is_bid = self._get_books(order.side)
 
             # create price level if new
             if order.price not in book:
                 book[order.price] = DoublyLinkedList(order.price)
+
+                if is_bid: 
+                    # insert negative price for bids to maintain descending order
+                    # insort keeps list ascending
+                    insort(price_list, -order.price) 
+                else:
+                    insort(price_list, order.price)
             
             node = book[order.price].append(order)
             self.order_map[order.order_id] = node # links order id to the node in the DLL for easy access 
@@ -46,7 +59,7 @@ class LimitOrderBook:
 
     def _match_buy(self, incoming_order):
         # got to check incoming order still has quantity and still have asks avail
-        while incoming_order.qty > 0 and self.asks: 
+        while incoming_order.qty > 0 and self.ask_prices: 
             best_ask_price = self.get_best_ask()
 
             if incoming_order.price < best_ask_price:
@@ -71,9 +84,10 @@ class LimitOrderBook:
             # remove empty price level
             if price_level.is_empty():
                 del self.asks[best_ask_price]
+                self.ask_prices.pop(0) # remove best ask price level
 
     def _match_sell(self, incoming_order): 
-        while incoming_order.qty > 0 and self.bids:
+        while incoming_order.qty > 0 and self.bid_prices:
             best_bid_price = self.get_best_bid()
 
             # Can't match if sell price is higher than best bid
@@ -102,6 +116,7 @@ class LimitOrderBook:
             # Remove empty price level
             if price_level.is_empty():
                 del self.bids[best_bid_price]
+                self.bid_prices.pop(0)  # still using list, can optimise with SortedDict later
 
     def cancel_order(self, order_id) -> bool:
         #  lookup in ordermap 
@@ -115,7 +130,8 @@ class LimitOrderBook:
         if price_level.is_empty():
             if node.order.side == Side.BUY:
                 del self.bids[price_level.price]
+                self.bid_prices.remove(-price_level.price)
             else:
                 del self.asks[price_level.price]
-
+                self.ask_prices.remove(price_level.price)
         return True

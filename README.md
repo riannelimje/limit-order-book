@@ -11,12 +11,11 @@ so i'm gonna build a simple limit order book from scratch to demonstrate core ma
 
 ## optimisation roadmap
 
-
 | version  | price structure         | queue structure | insert   | cancel | best price             | notes                                                                                    |
 | -------- | ----------------------- | --------------- | -------- | ------ | ---------------------- | ---------------------------------------------------------------------------------------- |
 | v1       | sorted list + bisect    | deque           | O(n)     | O(k)   | O(1)                   | naive queues, cancel scans deep queues linearly (k = depth at price level)               |
-| v2 (now) | sorted list + bisect    | DLL             | O(n)     | O(1)   | O(1)                   | replace deque with doubly-linked list → cancellation becomes O(1) while maintaining FIFO |
-| v3       | SortedDict              | DLL             | O(log n) | O(1)   | O(1)                   | handle very large price universes → insertion no longer O(n) due to shifting             |
+| v2       | sorted list + bisect    | DLL             | O(n)     | O(1)   | O(1)                   | replace deque with doubly-linked list → cancellation becomes O(1) while maintaining FIFO |
+| v3 (now) | SortedDict              | DLL             | O(log n) | O(1)   | O(1)                   | handle very large price universes → insertion no longer O(n) due to shifting             |
 | v4       | BTreeMap / Rust/C++ map | DLL             | O(log n) | O(1)   | O(1) + cache efficient | high-performance, low-level memory optimisations                                         |
 
 >initially thought deque was fine but the performance benchmarks caught the degredation so that pain point is managed first!
@@ -164,7 +163,8 @@ future optimisations
 
 ## dsa 
 
-order book maintains: 
+order book maintains:
+### v1 - sorted list + deque
 ```
 self.bids: dict[price → deque[Order]]
 self.asks: dict[price → deque[Order]]
@@ -173,6 +173,27 @@ self.bid_prices: list  # sorted descending
 self.ask_prices: list  # sorted ascending
 
 self.order_map: dict[order_id → Order]
+```
+
+### v2 - sorted list + doubly linked list 
+```
+self.bids: dict[price → DoublyLinkedList[Order]]   # price → DLL of orders (FIFO)
+self.asks: dict[price → DoublyLinkedList[Order]]   # price → DLL of orders (FIFO)
+
+self.bid_prices: list  # descending sorted list of bid prices
+self.ask_prices: list  # ascending sorted list of ask prices
+
+self.order_map: dict[order_id → Node]  # node in DLL, O(1) cancel
+```
+
+### v3 - SortedDict + doubly linked list 
+```
+self.bids: SortedDict[price → DoublyLinkedList[Order]]   # price → DLL of orders
+self.asks: SortedDict[price → DoublyLinkedList[Order]]   # price → DLL of orders
+
+# no need for separate price lists — SortedDict keeps prices sorted automatically
+
+self.order_map: dict[order_id → Node]  # node in DLL, O(1) cancel
 ```
 
 ### hashmap/dictionary 
@@ -184,7 +205,7 @@ self.order_map: dict[order_id → Order]
 - O(1) insert into price level
 - natural grouping by price 
 
-### sorted price list 
+### sorted price list (changed to SortedDict in v3)
 - maintain bid and ask prices
 - O(1) lookup for best bid and best ask 
 - O(n) insertion - could be optimised with heaps
@@ -227,7 +248,8 @@ after:  [-101, -100, -99]  # correct descending order preserved
 ```
 </details>
 
-### deque
+### deque (changed to DLL in v2)
+- double ended queue - allows insertion and deletion from both ends 
 - for price time priority which follows FIFO
   - append new order to the back --> O(1)
   - remove filled orders from front --> O(1)
@@ -260,6 +282,37 @@ Cancel O2:
   node2.next.prev = node2.prev
 Result: head -> [O1] <-> [O3] <- tail
 ```
+
+### SortedDict 
+- basically a map, but keys are always kept sorted 
+- uses a binary search tree
+- unlike sorted list, inserting new price level does not require shifting elements!
+- accessing best bid and ask --> O(1)
+  - peek best bid --> rightmost node of tree
+  - peek best ask --> leftmost node of tree
+- used tgt with dll to maintain the FIFO order and combined with order map for direct id lookup
+
+**example**
+```
+        100
+       /   \
+     95    105
+    /  \   /  \
+  90   97 102 110
+```
+- each node is a price level 
+
+<details>
+<summary>why are operations O(logn)?</summary>
+For search, insert, delete: 
+
+- start at the root, at each step compare your key with the current node
+  - if smaller go left
+  - if larger go right 
+- each step cuts the remaining tree in half
+- if tree balanced, height is roughly logn
+- at most logn comparisons to find the place to insert/remove
+</details>
 
 ## complexity summary
 
@@ -321,7 +374,7 @@ the primary bottleneck now is the cancellation under deep price levels so i'll w
 - update cancel logic
 </details>
 
-### Benchmarks — DLL Optimisation (v2)
+### benchmarks - DLL optimisation (v2)
 
 | Operation | v1 (ops/sec) | v2 (ops/sec) | Comment |
 |-----------|--------------|--------------|---------|
@@ -329,7 +382,86 @@ the primary bottleneck now is the cancellation under deep price levels so i'll w
 | Cancel 50k | 10,003 | 2,541,812 | Massive speedup! O(1) removal using order_map + DLL nodes. |
 | Matching 50k | 174,799 | 72,668 | Slightly slower, but FIFO preserved. |
 
-**Takeaways:**
-1. Cancellations were the main bottleneck — solved by DLL + node references.
-2. Inserts and matching remain acceptable; minor overhead from DLL.
-3. Next step: replace sorted price lists with `SortedDict` for O(log n) price-level maintenance.
+**takeaways:**
+1. cancellations were the main bottleneck — solved by DLL + node references.
+2. inserts and matching remain acceptable; minor overhead from DLL.
+3. next step: replace sorted price lists with `SortedDict` for O(log n) price-level maintenance.
+
+to verify that SortedDict is needed, i added an additional benchmark to test many price levels and scaled it with 10,000, 50,000 and 100,000 price levels (every order creates a new price level!)
+
+| Orders (n) | Elapsed Time (s) | Throughput (ops/sec) | Relative Slowdown |
+| ---------- | ---------------- | -------------------- | ----------------- |
+| 10,000     | 0.145            | 68,924               | 1.0× (baseline)   |
+| 50,000     | 1.019            | 49,051               | 7.0×              |
+| 100,000    | 3.612            | 27,686               | 24.9×             |
+
+> demonstrates that list based price maintenance does not scale under heavy price fragmentation
+
+<details>
+<summary>why lists become slow?</summary> 
+although bisect.insort takes O(logn) to find element
+
+when we insert a new element in front, every element shifts to the right 
+
+```
+ls = [100,101]
+# when we add 99
+ls = [99,100,101]
+```
+
+so insertion is O(n)
+
+when we insert 100,000 distinct prices, each insertion costs O(n) so total work becomes O(n^2) - following AP - (1 + 2 + 3 + ... + n) where sum = n/2(1+n)
+</details>
+
+### Benchmark Comparison: v2 vs v3
+
+| Benchmark Type       | Orders  | v2 (sorted list + DLL) ops/sec | v3 (SortedDict + DLL) ops/sec | Relative Improvement |
+|---------------------|--------:|-------------------------------:|--------------------------------------:|-------------------:|
+| Inserts             | 100,000 | 69,852                        | 187,626                               | ~2.7×             |
+| Cancel              | 50,000  | 2,588,471                      | 2,610,091                             | ~1×               |
+| Matching            | 50,000  | 69,175                         | 224,248                               | ~3.2×             |
+| Many Price Levels   | 10,000  | 68,924                         | 155,109                               | ~2.3×             |
+| Many Price Levels   | 50,000  | 49,051                         | 204,632                               | ~4.2×             |
+| Many Price Levels   | 100,000 | 27,686                         | 179,108                               | ~6.5×             |
+
+<details>
+<summary>why is SortedDict faster than sorted list?</summary>
+SortedDict uses a balanced binary search tree
+
+- insertion, deletion, lookup --> O(logn) regardless of depth 
+- no shifting needed yay
+
+**example 1 - maintain sorted price levels**
+```
+from sortedcontainers import SortedDict
+
+book = SortedDict()
+
+# Insert some price levels
+book[100] = "orders at 100"
+book[105] = "orders at 105"
+book[95]  = "orders at 95"
+
+print(book)
+# Output: SortedDict({95: 'orders at 95', 100: 'orders at 100', 105: 'orders at 105'})
+```
+although we added the prices in random order, the SortedDict keeps them sorted automatically 
+- there is no need to maintain a separate sorted list
+
+**example 2 - efficient insertion for many price levels**
+```
+book = SortedDict()
+
+# Imagine inserting 100,000 price levels one by one
+for i in range(100_000, 0, -1):
+    book[i] = f"orders at {i}"
+
+# The book is still sorted in ascending order
+print(list(book.keys())[:5])
+# Output: [1, 2, 3, 4, 5]  <-- automatically sorted
+```
+- with list + bisect, inserting each new price requires shifting n elements
+- SortedDict --> insertion is O(logn)
+
+</details>

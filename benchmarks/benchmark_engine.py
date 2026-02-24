@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 RESULTS_FILE = Path("benchmark_results.csv")
-VERSION = "v2"
+VERSION = "v3"
 
 def save_result(benchmark_type, n, elapsed):
     ops = n / elapsed
