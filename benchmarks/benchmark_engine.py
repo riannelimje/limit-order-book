@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 RESULTS_FILE = Path("benchmark_results.csv")
+VERSION = "v2"
 
 def save_result(benchmark_type, n, elapsed):
     ops = n / elapsed
@@ -33,7 +34,7 @@ def save_result(benchmark_type, n, elapsed):
             n,
             f"{elapsed:.6f}",
             f"{ops:.2f}",
-            "v2",
+            VERSION,
         ])
 
 def benchmark_inserts(n=100_000):
@@ -123,6 +124,46 @@ def benchmark_matching(n=50_000):
 
     save_result("matching", n, end - start)
 
+def benchmark_many_price_levels(n=100_000):
+    """
+    Stress test: many distinct price levels.
+    """
+    book = LimitOrderBook()
+
+    start = time.perf_counter()
+
+    for i in range(n):
+        price = 100 + i  # EVERY order at a new price level
+        order = Order(
+            order_id=str(i),
+            side=Side.BUY,
+            price=price,
+            qty=1,
+            timestamp=i
+        )
+        book.add_order(order)
+
+    end = time.perf_counter()
+
+    return { 
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "benchmark_type": "many_price_levels",
+        "n_orders": n,
+        "elapsed_sec": end - start,
+        "ops_per_sec": n / (end - start),
+    }
+
+def run_scaling_tests():
+    sizes = [10_000, 50_000, 100_000]
+    results = []
+
+    for n in sizes:
+        print(f"Running many_price_levels for {n} orders...")
+        result = benchmark_many_price_levels(n)
+        results.append(result)
+        print(result)
+        save_result(result["benchmark_type"], n, result["elapsed_sec"])
+
 if __name__ == "__main__":
     random.seed(42) # for reproducibility
     print("=== Benchmark: Inserts ===")
@@ -131,3 +172,5 @@ if __name__ == "__main__":
     benchmark_cancel()
     print("\n=== Benchmark: Matching ===")
     benchmark_matching()
+    print("\n=== Benchmark: Many Price Levels (scaling test) ===")
+    run_scaling_tests()
