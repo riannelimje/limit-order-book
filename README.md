@@ -321,7 +321,7 @@ the primary bottleneck now is the cancellation under deep price levels so i'll w
 - update cancel logic
 </details>
 
-### Benchmarks — DLL Optimisation (v2)
+### benchmarks - DLL optimisation (v2)
 
 | Operation | v1 (ops/sec) | v2 (ops/sec) | Comment |
 |-----------|--------------|--------------|---------|
@@ -329,7 +329,34 @@ the primary bottleneck now is the cancellation under deep price levels so i'll w
 | Cancel 50k | 10,003 | 2,541,812 | Massive speedup! O(1) removal using order_map + DLL nodes. |
 | Matching 50k | 174,799 | 72,668 | Slightly slower, but FIFO preserved. |
 
-**Takeaways:**
-1. Cancellations were the main bottleneck — solved by DLL + node references.
-2. Inserts and matching remain acceptable; minor overhead from DLL.
-3. Next step: replace sorted price lists with `SortedDict` for O(log n) price-level maintenance.
+**takeaways:**
+1. cancellations were the main bottleneck — solved by DLL + node references.
+2. inserts and matching remain acceptable; minor overhead from DLL.
+3. next step: replace sorted price lists with `SortedDict` for O(log n) price-level maintenance.
+
+to verify that SortedDict is needed, i added an additional benchmark to test many price levels and scaled it with 10,000, 50,000 and 100,000 price levels (every order creates a new price level!)
+
+| Orders (n) | Elapsed Time (s) | Throughput (ops/sec) | Relative Slowdown |
+| ---------- | ---------------- | -------------------- | ----------------- |
+| 10,000     | 0.145            | 68,924               | 1.0× (baseline)   |
+| 50,000     | 1.019            | 49,051               | 7.0×              |
+| 100,000    | 3.612            | 27,686               | 24.9×             |
+
+> demonstrates that list based price maintenance does not scale under heavy price fragmentation
+
+<details>
+<summary>why lists become slow?</summary> 
+although bisect.insort takes O(logn) to find element
+
+when we insert a new element in front, every element shifts to the right 
+
+```
+ls = [100,101]
+# when we add 99
+ls = [99,100,101]
+```
+
+so insertion is O(n)
+
+when we insert 100,000 distinct prices, each insertion costs O(n) so total work becomes O(n^2) - following AP - (1 + 2 + 3 + ... + n) where sum = n/2(1+n)
+</details>
