@@ -14,6 +14,9 @@ class LimitOrderBook:
 
         self.order_map = {}
 
+        # tape 
+        self.trade_history = []
+
     def get_best_bid(self):
         if not self.bids:
             return None
@@ -61,6 +64,11 @@ class LimitOrderBook:
             incoming_order.qty -= trade_qty
             best_order_node.order.qty -= trade_qty
 
+            # for the tape record
+            trade = (best_ask_price, trade_qty)
+
+            self.trade_history.append(trade)
+
             print(f"Trade executed: {trade_qty} @ {best_ask_price} between {incoming_order.order_id} and {best_order_node.order.order_id}")
 
             # remove filled resting order 
@@ -90,6 +98,10 @@ class LimitOrderBook:
             # Execute trade
             incoming_order.qty -= trade_qty
             resting_order.qty -= trade_qty
+
+            trade = (best_bid_price, trade_qty)
+
+            self.trade_history.append(trade)
 
             print(f"Trade executed: {trade_qty} @ {best_bid_price} "
                 f"between {incoming_order.order_id} and {resting_order.order_id}")
