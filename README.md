@@ -20,6 +20,8 @@ so i'm gonna build a simple limit order book from scratch to demonstrate core ma
 
 >initially thought deque was fine but the performance benchmarks caught the degredation so that pain point is managed first!
 
+>v4 will be in the future as i've yet to learn cpp or rust
+
 heap was considered but rejected - arbitrary deletion is O(n) which breaks cancellation performance
 
 lazy deletion workaround exists but silently degrades best price lookup under heavy cancellations
@@ -71,6 +73,19 @@ and i don't think the order book passes any of these(?)
 general principle 
 > a workaround that requires you to build more infra to manage the workaround is a sign that you chose the wrong data structure for the problem
 </details>
+
+## cli 
+it's playable in the cli! 
+simply run ` python3 cli.py`
+
+**commands**
+| Command          | Description                | Example      |
+| ---------------- | -------------------------- | ------------ |
+| `BUY price qty`  | Submit a buy limit order   | `BUY 100 5`  |
+| `SELL price qty` | Submit a sell limit order  | `SELL 101 3` |
+| `CANCEL id`      | Cancel an existing order   | `CANCEL 12`  |
+| `BOOK`           | Display current order book | `BOOK`       |
+| `EXIT`           | Quit the CLI               | `EXIT`       |
 
 ## order structure
 limit order book stores buy and sell orders 
@@ -465,3 +480,22 @@ print(list(book.keys())[:5])
 - SortedDict --> insertion is O(logn)
 
 </details>
+
+## visualisation
+the visualisation layer provides cumulative depth analysis, enabling liquidity inspection, spread analysis and order book imbalance measurement. This mirrors the depth view provided by electronic trading venues!
+
+simply run `python3 demo_depth.py`
+
+this will 
+1. populate order book with sample orders
+2. aggregate book depth 
+3. render the depth chart 
+
+**what the depth chart shows**
+| Component      | Meaning                          |
+| -------------- | -------------------------------- |
+| Bid curve      | Cumulative buy liquidity         |
+| Ask curve      | Cumulative sell liquidity        |
+| Mid-price line | Fair price estimate              |
+| Spread region  | Current bid–ask gap              |
+| Step shape     | FIFO aggregation at price levels |
